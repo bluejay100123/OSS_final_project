@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="kr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Streaming</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            width: 100vw;
+            position: relative;
+            display: flex;
+        }
+
+        #video-container {
+            position: absolute;
+            top: 60px;
+            left: 240px;
+            width: 1326px;
+            padding-top: 38.85%;
+            background-color: #000;
+        }
+
+        #video-container img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #message-container {
+            position: absolute;
+            top: 105px;
+            right: 5px;
+            width: 320px;
+            height: 715px;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        #message-container::-webkit-scrollbar {
+            display: none;
+        }
+
+        .user-avatar {
+            width: 30px;
+            height: 30px;
+            margin-right: 10px;
+        }
+
+        #message-container .chat-message {
+            display: flex;
+            align-items: center;
+            margin-top: 5px;
+        }
+
+        #message-container .chat-message span {
+            flex-grow: 1;
+            color: #f7f7f7
+        }
+
+        #button-container { 
+            width: 215px; /* Fixed width for the side container */
+            align-items: center;
+            display: flex;
+            flex-direction: column; /* Stack children vertically */
+            padding: 10px; /* Optional padding for the container */
+            gap: 15px; /* Add spacing between the button containers */
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1); /* Optional shadow for emphasis */
+        }
+
+        #image-button-container { 
+            display: flex;
+            flex-direction: column; /* Stack buttons vertically */
+            gap: 15px; /* Keep existing button spacing */
+        }
+
+        #banner-container {
+            display: flex;
+            margin-top: 50px;
+            flex-direction: column; /* Stack buttons vertically */
+        }
+
+        .image-button {
+            width: 200px;
+            height: 95px;
+            border: none;
+            background-size: cover;
+            background-position: center calc(0% - 75px);
+            cursor: pointer;
+        }
+
+        .image-banner {
+            width: 200px;
+            height: 70px;
+            border: none;
+            background-size: cover;
+            background-position: center calc(0% - 15px);
+        }
+    </style>
+</head>
+<body>
+    <div id="button-container">
+        <div id="banner-container"></div>
+        <div id="image-button-container"></div>
+    </div>
+    <div id="video-container"><img src="{{ url_for('video') }}"></div>
+
+    <div id="message-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+    <script>
+        var socket = io.connect('http://' + document.domain + ':' + location.port);
+        var imageButtonContainer = document.getElementById('image-button-container');
+        var bannerContainer = document.getElementById('banner-container');
+
+        socket.on('message_response', function(data) {
+            var contentSpan = document.getElementById('message-container');
+            var content = document.createElement('div');
+            var chatMessage = document.createElement('div');
+            var userAvatar = document.createElement('div');
+            
+            userAvatar.className = 'user-avatar';
+            userAvatar.style.backgroundColor = getRandomColor();
+            chatMessage.className = 'chat-message';
+            chatMessage.appendChild(userAvatar);
+            chatMessage.innerHTML += '<span>' + '[ ' + data.user + ' ]' + ' : ' + data.message + '</span>';
+            content.style.fontSize = "14px";
+            content.appendChild(chatMessage);
+            contentSpan.appendChild(content);
+            contentSpan.scrollTop = contentSpan.scrollHeight;
+            checkChatLimit(contentSpan);
+        });
+
+        socket.on('clear_chat', function() {
+            var contentSpan = document.getElementById('message-container');
+            contentSpan.innerHTML = '';
+        });
+
+    // 초기 단계 이미지 로드 함수
+        function setBackgroundImage(image) {
+            document.body.style.backgroundImage = `url('/static/ui/bg/${image}.png')`;
+            document.body.style.backgroundSize = "cover"; // Ensures the image covers the entire background
+            document.body.style.backgroundRepeat = "no-repeat"; // Prevents the image from repeating
+            document.body.style.backgroundPosition = "top center"; // Centers the image
+        }
+
+        function setBannerImage(image) {
+            bannerContainer.innerHTML = '';
+            const banner = document.createElement('img');
+            banner.style.backgroundImage = `url('/static/ui/banner/${image}.png')`;
+            banner.className = 'image-banner';   
+            bannerContainer.appendChild(banner)  
+        }
+
+        function loadImageButtons(images) {
+            imageButtonContainer.innerHTML = ''; // Clear existing buttons
+            images.forEach(image => {
+                const button = document.createElement('button');
+                button.className = 'image-button';
+                button.style.backgroundImage = `url('/static/sources/images/${image}.jpg')`;
+                button.setAttribute('data-image', image);
+                button.setAttribute('onclick', 'sendInfo(this)');
+                imageButtonContainer.appendChild(button);
+            });
+        }
+
+        function checkChatLimit(chatBox) {
+            var chatItems = chatBox.querySelectorAll('.chat-message');
+            if (chatItems.length > 27) {
+                chatItems[0].remove();
+            }
+        }
+
+        // 랜덤 색상을 반환하는 함수
+        function getRandomColor() {
+            var letters = '0123456789ABCDEF';
+            var color = '#';
+            for (var i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        fetch('/get-background')
+            .then(response => response.json())
+            .then(image => setBackgroundImage(image));
+
+        fetch('/get-banner')
+            .then(response => response.json())
+            .then(image => setBannerImage(image));
+
+        fetch('/get-images')
+            .then(response => response.json())
+            .then(images => loadImageButtons(images));
+
+        socket.on('update_buttons', images => {
+            loadImageButtons(images);
+        });
+
+    // 사용자 Action 처리 함수
+        function sendInfo(button) {
+            var imageName = button.getAttribute('data-image');
+            socket.emit('select_image', { image: imageName });
+        }
+
+
+    </script>
+</body>
+</html>
